@@ -437,7 +437,7 @@ class TgiProvider(BaseProvider):
         return f"/generate{stream_suffix}"
 
     def format_payload(self, prompt, max_tokens):
-        data = {
+        return {
             "inputs": prompt,
             "parameters": {
                 "max_new_tokens": max_tokens,
@@ -446,7 +446,6 @@ class TgiProvider(BaseProvider):
                 "details": self.parsed_options.logprobs is not None,
             },
         }
-        return data
 
     def parse_output_json(self, data, prompt):
         if "token" in data:
@@ -487,14 +486,13 @@ def _load_curl_like_data(text):
     """
     Either use the passed string or load from a file if the string is `@filename`
     """
-    if text.startswith("@"):
-        try:
-            with open(text[1:], "r") as f:
-                return f.read()
-        except Exception as e:
-            raise ValueError(f"Failed to read file {text[1:]}") from e
-    else:
+    if not text.startswith("@"):
         return text
+    try:
+        with open(text[1:], "r") as f:
+            return f.read()
+    except Exception as e:
+        raise ValueError(f"Failed to read file {text[1:]}") from e
 
 
 class LLMUser(HttpUser):
@@ -566,9 +564,9 @@ class LLMUser(HttpUser):
     def _on_start(self):
         self.client.headers["Content-Type"] = "application/json"
         if self.environment.parsed_options.api_key:
-            self.client.headers["Authorization"] = (
-                "Bearer " + self.environment.parsed_options.api_key
-            )
+            self.client.headers[
+                "Authorization"
+            ] = f"Bearer {self.environment.parsed_options.api_key}"
         self._guess_provider()
         print(f" Provider {self.provider} using model {self.model} ".center(80, "*"))
         self.provider_formatter = PROVIDER_CLASS_MAP[self.provider](
@@ -670,11 +668,11 @@ class LLMUser(HttpUser):
         t_start = time.perf_counter()
 
         with self.client.post(
-            self.provider_formatter.get_url(),
-            data=json.dumps(data),
-            stream=True,
-            catch_response=True,
-        ) as response:
+                self.provider_formatter.get_url(),
+                data=json.dumps(data),
+                stream=True,
+                catch_response=True,
+            ) as response:
             dur_chunks = []
             combined_text = ""
             done = False
@@ -792,8 +790,10 @@ class LLMUser(HttpUser):
                 print(
                     f"WARNING: prompt usage tokens {prompt_usage_tokens} != {self.prompt_tokenizer_tokens} derived from local tokenizer"
                 )
-            prompt_tokens = prompt_usage_tokens or self.prompt_tokenizer_tokens
-            if prompt_tokens:
+            if (
+                prompt_tokens := prompt_usage_tokens
+                or self.prompt_tokenizer_tokens
+            ):
                 add_custom_metric("prompt_tokens", prompt_tokens)
 
             if not self.first_done:
@@ -978,7 +978,7 @@ def _(environment, **kw):
     # print in the final event handler to make sure our output is the last one
     @events.quit.add_listener
     def exit_printer(**kw):
-        max_width = max(len(k) for k in entries.keys())
+        max_width = max(len(k) for k in entries)
         print(" Summary ".center(80, "="))
         for k, v in entries.items():
             print(f"{k:<{max_width}}: {v}")
